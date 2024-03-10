@@ -1,0 +1,90 @@
+import pandas as pd
+import datetime
+import requests
+
+pd.set_option('display.max_columns', None)
+df = pd.read_csv('incidents.csv')
+
+# 1. 
+df.info()
+df.describe()
+
+# 2. 
+df_new = df[['type', 'start_time']].value_counts()
+df_new = pd.DataFrame(df2).reset_index()
+df_new.columns = ['type', 'start_time', 'count']
+daytime = []
+for row in range(len(df_new)):
+    time_start = datetime.datetime.strptime(
+        df_new["start_time"][row], '%Y-%m-%d %H:%M:%S.%f')
+    if time_start.hour >= 0 and time_start.hour <= 12:
+        daytime.append(f'night {time_start.hour} hour')
+    else: 
+        daytime.append(f'day {time_start.hour} hour')
+df_new["start_time"] = daytime
+
+# 3. 
+
+assets_id = []
+assets_clear = []
+df_info = []
+wdc = []
+assets_id = df.assets_id.unique()
+
+for i in range(len(assets_id)):
+    if ',' in assets_id[i]:
+        assets_clear.append(assets_id[i][:assets_id[i].index(',')].replace("[", '').replace("]", '').replace("'", ''))
+        assets_clear.append(assets_id[i][assets_id[i].index(',') + 2:].replace("[", '').replace("]", '').replace("'", ''))
+    else:
+        assets_clear.append(assets_id[i].replace("[", '').replace("]", '').replace("'", ''))
+
+set_ass = set(assets_clear) 
+assets_absolute = (list(set_ass))
+
+for row in range(51):
+    df_ass = df[df['assets_id'].str.contains(assets_absolute[row])]
+    os = requests.get(api_url, params={'asset-id': int(assets_absolute[row])}).json().get('result', {}).get('os')
+    df_info.append((assets_absolute[row], os, df_ass['events_count'].median(), df_ass['crit_rate'].median()))
+
+df100 = pd.DataFrame(df_info, columns=('assets_id', 'os', 'events_count', 'crit_rate'))
+
+os = df100.os.unique()
+
+sume = []
+sumc = []
+
+for row in range(len(os)):
+    df_ass = df100[df100['os'].str.contains(os[row])]
+
+    sume.append(df_ass['events_count'].sum())
+    sumc.append(df_ass['crit_rate'].sum())
+    
+df_new = pd.DataFrame()
+df_new['os'] = os
+df_new['sem_ev'] = sume
+df_new['sum_crit'] = sumc
+
+# 4. 
+
+def get_duration(row: int) -> int:
+    time_start = datetime.datetime.strptime(
+        df["start_time"][row], '%Y-%m-%d %H:%M:%S.%f')
+
+    time_end = datetime.datetime.strptime(
+        df["end_time"][row], '%Y-%m-%d %H:%M:%S.%f')
+
+    rez = (time_end - time_start).total_seconds()
+
+    return rez
+attitide = []
+
+for i in range(len(df)):
+    attitide.append(df['events_count'][i]/get_duration(i))
+
+df['attitude'] = attitide
+df_sorted = df.sort_values(by='attitude')
+mediana = df_sorted["crit_rate"][0:5].median()
+
+ch_df = df.loc[df['crit_rate'] > mediana]
+
+ch_df["id"]
