@@ -1,0 +1,119 @@
+import warnings
+warnings.filterwarnings('ignore')
+import os
+
+import random
+import datetime
+import ast
+
+import pandas as pd
+import datetime
+import requests
+import numpy as np
+
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import networkx as nx
+import plotly.graph_objects as go
+import plotly.express as px
+
+pd.set_option('display.max_columns', None)
+incidents_df = pd.read_csv('incidents_nonlinear.csv')
+assets_df = pd.read_csv('assets_nonlinear.csv')
+vulnerabilities_df = pd.read_csv('vulnerabilities_nonlinear.csv')
+
+#1
+incidents_df['start_time'] = pd.to_datetime(incidents_df['start_time'])
+df = incidents_df['start_time'].dt.hour.value_counts()
+df = pd.DataFrame(df).reset_index()
+df.columns = ['hour', 'countss']
+df['hour'] = df['hour'].apply(lambda x: int(x))
+df.sort_values(by='hour', inplace=True)
+
+bins = np.arange(0,24,1)
+plt.figure(figsize=(20,10))
+plt.hist(df.hour.values, weights=df.countss.values, log = True, bins = bins)
+
+#2
+def strtolist(date: str):
+    rez = []
+    itr = date.replace("[", '').replace("]", '').replace(",", '').replace(" ", '')
+    for i in range(0, len(itr), 5):
+        rez.append(int(itr[i:i+5]))
+    return rez
+
+incidents_df['vulnerabilities_id'] = incidents_df['vulnerabilities_id'].apply(lambda x: strtolist(x))
+
+def sumcvss(row):
+    cvss = 0
+    for i in range(len(row)):
+        cvss += vulnerabilities_df.loc[vulnerabilities_df['id'] == row[i]].values[0][2] / len(row)      
+    return cvss
+
+cvss_rate = []
+
+for row in range(len(incidents_df)):
+    cvss_rate.append(sumcvss(incidents_df['vulnerabilities_id'][row]))
+
+incidents_df['cvss_sumrate'] = cvss_rate
+incidents_df['start_time'] = pd.to_datetime(incidents_df['start_time'])
+incidents_df.sort_values(by='start_time', inplace=True)
+incidents_df.plot.scatter(x="start_time", y="cvss_sumrate", marker = '.', figsize=(43,15))
+
+plt.show()
+
+
+#3
+
+assets_id = []
+assets_clear = []
+df_info = []
+df_dict = {'asset_id': [], 'median_crit': []}
+
+assets_id = incidents_df.assets_id.unique()
+
+for i in range(len(assets_id)):
+    if ',' in assets_id[i]:
+        assets_clear.append(assets_id[i][:assets_id[i].index(',')].replace("[", '').replace("]", '').replace("'", ''))
+        assets_clear.append(assets_id[i][assets_id[i].index(',') + 2:].replace("[", '').replace("]", '').replace("'", ''))
+    else:
+        assets_clear.append(assets_id[i].replace("[", '').replace("]", '').replace("'", ''))
+
+assets_absolute = (list(set(assets_clear)))
+
+for i in range(len(assets_absolute)):
+    itr_df = incidents_df[incidents_df['assets_id'].str.contains(assets_absolute[i])]
+    df_dict['asset_id'].append(assets_absolute[i])
+    df_dict['median_crit'].append(itr_df['crit_rate'].median())
+
+med_df = pd.DataFrame(df_dict)
+
+hostname = assets_df.hostname.unique()
+df_dict2 = {'hostname': [], 'crit': []}
+crit = 0
+listik = []
+
+for i in range(len(hostname)):
+    itr_df = assets_df[assets_df['hostname'].str.contains(hostname[i])]
+
+    listik = itr_df["id"].values.tolist()
+    listik = list(map(str, listik))
+    med_df_ls = med_df[med_df['asset_id'].isin(listik)]
+    df2 = med_df[med_df['asset_id'].isin(listik)]
+    crit = df2['median_crit'].sum()
+
+    df_dict2['hostname'].append(hostname[i])
+    df_dict2['crit'].append(crit)
+    crit = 0
+
+hostcrit_df = pd.DataFrame(df_dict2)
+
+f = plt.figure(figsize=(50, 15))
+bins = hostcrit_df.head(50)["hostname"].values.tolist()
+col_list = hostcrit_df.head(50)["crit"].values.tolist()
+plt.xticks(rotation=90)
+plt.plot(bins, col_list, linewidth=1, markersize=15, marker='o')
+plt.rc('xtick', labelsize=170) 
+plt.rc('ytick', labelsize=170) 
+plt.grid(True) 
+plt.show()
